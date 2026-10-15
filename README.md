@@ -66,10 +66,14 @@ dynamion list          # show the task inventory
 Run a single task against a local model, graded hermetically:
 
 ```bash
-mkdir -p ~/dynamion-ws && cp -r tasks/retry-backoff/workspace ~/dynamion-ws/run
+# Prepare a workspace: the agent's view of the task, as a fresh git repo.
+mkdir -p ~/dynamion-ws
+cp -r tasks/retry-backoff/workspace ~/dynamion-ws/run
 cd ~/dynamion-ws/run && git init -q && git add -A && \
   git -c user.email=a@b -c user.name=base commit -qm base
 
+# Run from the repository root -- the task path is relative to it.
+cd -
 dynamion run tasks/retry-backoff/task.yaml \
     --agent aider --model ollama/qwen2.5-coder:7b \
     --env docker --allow-host host.docker.internal \
