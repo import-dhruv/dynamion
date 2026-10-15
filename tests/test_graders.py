@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from dynamion.core import Patch, TestGrader
+from dynamion.core import Patch, TestGrader, Trajectory
 from dynamion.graders.tests import (
     GraderEnvironmentError,
     TestGraderRunner,
@@ -323,3 +323,48 @@ def test_python_placeholder_follows_the_environment(tmp_path):
 
     runner = TestGraderRunner("hidden", spec_for(tmp_path), environment=FakeEnv())
     assert runner._resolve_command()[0] == "python3"
+
+# ------------------------------------------------------- patch capture
+
+
+def test_patch_includes_untracked_files(tmp_path):
+    """Regression guard: a new file must appear in the patch.
+
+    ``git diff HEAD`` is blind to untracked files. A model whose output is
+    a *new* module therefore produced an empty patch, an empty
+    ``files_changed`` list, and a rubric score of zero for work that may
+    have been entirely correct -- the judge reads the diff and saw
+    nothing at all. Silent, and severe.
+    """
+    import subprocess
+
+    from dynamion.runners.aider import AiderRunner
+
+    workdir = make_workspace(tmp_path, "x = 1\n")
+    subprocess.run(["git", "init", "-q"], cwd=workdir, check=True)
+    subprocess.run(["git", "add", "-A"], cwd=workdir, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-c", "user.email=a@b", "-c", "user.name=t", "commit", "-qm", "base"],
+        cwd=workdir, check=True, capture_output=True,
+    )
+
+    runner = AiderRunner(model="test")
+    before = runner.compute_patch(workdir, Trajectory(task="t", agent="a", started_at=_now()))
+    assert before.files_changed == []
+    assert before.diff_bytes == 0
+
+    # The agent creates a brand-new module rather than editing the existing one.
+    (workdir / "brand_new_module.py").write_text("y = 2\n", encoding="utf-8")
+
+    after = runner.compute_patch(workdir, Trajectory(task="t", agent="a", started_at=_now()))
+    assert "brand_new_module.py" in after.files_changed, (
+        "untracked file invisible to the patch; the rubric judge would see an "
+        "empty diff and score correct work as zero"
+    )
+    assert after.diff_bytes > 0
+
+
+def _now():
+    import datetime as dt
+
+    return dt.datetime.now(dt.timezone.utc)

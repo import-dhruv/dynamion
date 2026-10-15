@@ -227,6 +227,13 @@ def _seed_workspace(workspace: Path, task) -> None:
 
     if not (workspace / ".git").exists():
         subprocess.run(["git", "init", "-q"], cwd=workspace, check=True)
+
+    # Agent scratch files are not part of the solution. Leaving them in the
+    # patch means the rubric judge reads Aider's own chat transcript as
+    # though it were the agent's work.
+    ignore = workspace / ".gitignore"
+    ignore.write_text(".aider.*\n__pycache__/\n*.pyc\n.hypothesis/\n", encoding="utf-8")
+
     subprocess.run(["git", "add", "-A"], cwd=workspace, check=True, capture_output=True)
     subprocess.run(
         ["git", "-c", "user.email=h@dynamion.dev", "-c", "user.name=harness",

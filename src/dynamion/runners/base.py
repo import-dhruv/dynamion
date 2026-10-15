@@ -165,7 +165,18 @@ class Runner(abc.ABC):
             )
 
     def compute_patch(self, workdir: Path, trajectory: Trajectory) -> Patch:
-        """Capture the repository diff produced during the run."""
+        """Capture the repository diff produced during the run.
+
+        Untracked files are included via ``git add --intent-to-add`` first.
+        Without that step ``git diff HEAD`` is blind to anything the agent
+        created, and this failure is silent and severe: a model whose main
+        output is a *new* file produces an empty patch, an empty
+        ``files_changed`` list, and — because the rubric judge reads the
+        diff — a rubric score of zero for work that may be entirely
+        correct. Observed on a real run.
+        """
+        run_locally_quiet(["git", "add", "--intent-to-add", "--all"], cwd=workdir)
+
         try:
             proc = subprocess.run(
                 ["git", "diff", "--no-color", "HEAD"],
@@ -182,8 +193,22 @@ class Runner(abc.ABC):
         files: list[str] = []
         for line in diff.splitlines():
             if line.startswith("+++ b/"):
-                files.append(line[6:])
+                files.append(line[6:].strip())
         return Patch(unified_diff=diff, files_changed=files, diff_bytes=len(diff.encode()))
+
+
+def run_locally_quiet(command: list[str], cwd: Path) -> None:
+    """Run a command, discarding failure. Used for index bookkeeping."""
+    try:
+        subprocess.run(
+            command,
+            cwd=cwd,
+            capture_output=True,
+            timeout=60,
+            check=False,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        pass
 
 
 def _merge_env(overrides: dict[str, str]) -> dict[str, str]:
