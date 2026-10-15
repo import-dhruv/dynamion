@@ -1,0 +1,153 @@
+id: idempotent-ledger
+version: 0.1.0
+title: "Make a payment ledger idempotent under retry and concurrency"
+difficulty: hard
+tags: [python, correctness, concurrency, persistence, invariants]
+
+prompt: |
+  The `ledgerpay` package records incoming payment webhooks into an
+  append-only ledger. Payment providers retry webhooks whenever they do
+  not receive an acknowledgement, so the same logical payment is
+  delivered multiple times. The current implementation in
+  `ledgerpay/store.py` appends an entry for every delivery, which means a
+  retried webhook double-counts a payment and corrupts the merchant
+  balance.
+
+  Rewrite the ledger so that it is idempotent and preserves its existing
+  accounting invariants. The public API used by the webhook handler and
+  by the existing tests must keep working:
+
+      store = InMemoryLedger()
+      result = store.record_payment(payment)
+      store.balance("acct_1")
+
+  `record_payment` must return a result object that tells the caller
+  whether the payment was newly applied or was a duplicate, so the
+  webhook handler can return the correct HTTP status without re-inspecting
+  the store.
+
+  Required behaviour:
+
+  1. **Idempotency.** A payment carrying an `idempotency_key` that has
+     already been applied must not create a second ledger entry. The
+     second call must return a result indicating a duplicate, and
+     `balance` must be unchanged. The same applies to a retry that
+     carries no key but is otherwise identical to an applied payment:
+     treat exact duplicates of an already-applied payment as duplicates.
+
+  2. **Conflicting reuse.** If an idempotency key is reused with a
+     *different* payload — for example the same key with a different
+     amount — the store must raise `ConflictingIdempotencyKey` and must
+     not modify the ledger. This is a provider bug or an attack, and it
+     must never be silently resolved by accepting either payload.
+
+  3. **Atomicity.** A payment is applied to the ledger and the account
+     balance together, or neither. If applying raises, the ledger must be
+     left exactly as it was.
+
+  4. **Validation before mutation.** Payments must be validated *before*
+     any state changes. A payment with a non-positive amount, a missing
+     account, or an unknown currency must raise `InvalidPayment` and must
+     leave the ledger untouched. Validation must not occur after the entry
+     has been appended.
+
+  5. **Concurrent access.** The store is used from multiple threads.
+     Concurrent calls to `record_payment` for the same idempotency key
+     must produce exactly one ledger entry, not several. Correct locking
+     or an equivalent mechanism is required; an unsynchronised
+     check-then-append sequence is not acceptable.
+
+  6. **Ordering.** Ledger entries must be assigned monotonically
+     increasing sequence numbers. A duplicate must not consume a sequence
+     number.
+
+  7. **Rejection of invalid states.** Once an account is closed, further
+     payments to it must be refused with a domain error.
+
+  Do not modify the tests in `tests/`. The public API of the package --
+  every name re-exported by `ledgerpay/__init__.py`, which includes
+  `InMemoryLedger`, `InvalidPayment`, `ConflictingIdempotencyKey`,
+  `AccountClosed`, `LedgerError`, `Payment`, `RecordResult` and
+  `LedgerEntry` -- must continue to exist and must keep its current
+  meaning. Existing callers import from the package, not from the module,
+  so removing any of those names breaks them even if nothing in this
+  repository notices.
+
+environment:
+  image: python:3.11.9-slim@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+  workdir: /workspace
+  seed_repos:
+    ledgerpay: ./workspace
+  setup_commands:
+    - "pip install --no-cache-dir --disable-pip-version-check pytest"
+  network_allowlist: []
+
+budget:
+  max_turns: 50
+  max_seconds: 2400
+  max_tokens: 500000
+
+graders:
+  - type: tests
+    weight: 0.75
+    command: ["${PYTHON}", "-m", "pytest", "tests/test_ledger.py", "-q", "--tb=short", "-p", "no:cacheprovider"]
+    hidden_paths:
+      - "hidden/test_ledger.py=tests/test_ledger.py"
+    timeout_seconds: 300
+    result_pattern: '(\d+) passed'
+    partial_credit: true
+
+  - type: rubric
+    weight: 0.25
+    judge_model: "ollama/qwen2.5-coder:7b"
+    judge_base_url: "http://localhost:11434"
+    self_consistency_k: 3
+    judge_input: [diff]
+    criteria:
+      - id: concurrency_correctness
+        description: >
+          Concurrent record_payment calls for the same idempotency key
+          produce exactly one entry, via a real synchronisation mechanism
+          rather than an unsynchronised check-then-append.
+        anchor_low: "No locking, or check-then-act with a race window"
+        anchor_high: "Critical section correctly scoped around the entire check-and-append"
+      - id: validation_ordering
+        description: >
+          Validation demonstrably happens before any mutation, with a clear
+          reason for the ordering.
+        anchor_low: "State appended before validation, or ordering is incidental"
+        anchor_high: "Validation strictly precedes mutation, and the reason is stated"
+      - id: atomicity
+        description: >
+          Ledger entry and balance update succeed or fail together, with a
+          rollback or equivalent that leaves state untouched on error.
+        anchor_low: "Partial mutation possible on failure"
+        anchor_high: "Failure leaves the ledger exactly as it was, and this is verifiable"
+      - id: explicitness
+        description: >
+          Errors are raised as the specific documented domain errors
+          (InvalidPayment, ConflictingIdempotencyKey) rather than generic
+          exceptions.
+        anchor_low: "Generic Exception, or errors swallowed"
+        anchor_high: "Precise domain errors used, and the choice is justified"
+    anti_gaming_note: >
+      Credit behaviour, not commentary. Do not award credit for removing,
+      skipping, or weakening assertions, and do not credit code that detects
+      the test environment in order to change behaviour.
+
+source:
+  kind: synthetic_feature
+  upstream: null
+  notes: >
+    Clean-room specification authored for dynamion. The concurrency and
+    idempotency bugs were introduced deliberately into the seed workspace and
+    do not correspond to any published repository.
+  contamination_checked_at: 2026-10-14T00:00:00Z
+
+expected_pitfalls:
+  - "Checking for an existing key and appending without holding a lock across both steps."
+  - "Appending the ledger entry before validating, leaving an entry behind when validation raises."
+  - "Treating a reused key with a different amount as a plain duplicate instead of raising."
+  - "Consuming a sequence number on a rejected duplicate, breaking monotonicity assertions."
+  - "Rewriting store.py from scratch and dropping names that __init__.py re-exports, breaking the package import."
+  - "Writing a new store.py at the repository root instead of editing ledgerpay/store.py."

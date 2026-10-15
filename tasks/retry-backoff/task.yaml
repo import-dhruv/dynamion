@@ -1,0 +1,136 @@
+# Task: retry-backoff
+id: retry-backoff
+version: 0.1.0
+title: "Implement a correct, configurable retry policy for an HTTP client"
+difficulty: medium
+tags: [python, concurrency, error-handling, api-design, typing]
+
+prompt: |
+  The `fluxclient` package in this workspace sends HTTP requests and retries
+  them on transient failures. Retries are currently handled by a single
+  hard-coded loop inside `FluxClient.request`, which retries every error
+  exactly twice with no delay, retries on permanent failures such as 4xx,
+  and ignores `Retry-After` headers that the server sends.
+
+  Replace the inline retry loop with a proper retry policy component that
+  satisfies the following behavioural contract. The public entry point
+  `FluxClient.request(url, ...)` must keep working unchanged for existing
+  callers.
+
+  1. Retries apply only to transient conditions: HTTP status codes 408,
+     429, 500, 502, 503, 504, and to transport-level errors (connection
+     reset, timeout). Any other status, including all other 4xx codes,
+     must be raised to the caller on the first attempt.
+
+  2. The number of attempts is configurable via a `max_attempts`
+     parameter and must be at least 1. `max_attempts=1` disables
+     retrying entirely. Passing a value below 1 must raise `ValueError`
+     at configuration time, not at request time.
+
+  3. Delays between attempts grow exponentially: attempt *n* waits
+     `base_delay * (backoff_factor ** (n - 1))` seconds, where the first
+     retry is attempt 1 and therefore waits `base_delay`. `base_delay`
+     and `backoff_factor` are configurable.
+
+  4. When the server sends a `Retry-After` header containing a number of
+     seconds, that value takes precedence over the computed backoff. A
+     malformed or negative `Retry-After` value must be ignored in favour
+     of the computed backoff rather than raising.
+
+  5. If the total time spent sleeping would exceed `max_elapsed` seconds,
+     the client must give up and re-raise the last error immediately
+     rather than sleeping past the deadline.
+
+  6. Every attempt must be reported through a caller-supplied callback
+     receiving the attempt number, the exception raised, and the delay
+     that will be slept before the next attempt. The callback must not
+     be invoked for the final attempt, since there is no next attempt.
+
+  7. All new code must be fully type annotated, and the public policy
+     class must expose its configuration through read-only properties
+     rather than public mutable attributes.
+
+  Write the policy so that it is independent of the HTTP transport: it
+  should be usable by any caller that can report an exception and a
+  response status, not only by `FluxClient`. Do not modify the existing
+  tests in the `tests/` directory.
+
+environment:
+  image: python:3.11.9-slim@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+  workdir: /workspace
+  seed_repos:
+    fluxclient: ./workspace
+  setup_commands:
+    - "pip install --no-cache-dir --disable-pip-version-check pytest"
+  network_allowlist: []
+
+budget:
+  max_turns: 40
+  max_seconds: 1800
+  max_tokens: 400000
+
+graders:
+  - type: tests
+    weight: 0.7
+    command: ["${PYTHON}", "-m", "pytest", "tests/test_retry.py", "-q", "--tb=short", "-p", "no:cacheprovider"]
+    hidden_paths:
+      - "hidden/test_retry.py=tests/test_retry.py"
+    timeout_seconds: 300
+    result_pattern: '(\d+) passed'
+    partial_credit: true
+
+  - type: rubric
+    weight: 0.3
+    judge_model: "ollama/qwen2.5-coder:7b"
+    judge_base_url: "http://localhost:11434"
+    self_consistency_k: 3
+    judge_input: [diff]
+    criteria:
+      - id: transport_independence
+        description: >
+          The retry policy is implemented as a component that does not depend
+          on the HTTP transport, and can be reused by a caller that is not
+          FluxClient.
+        anchor_low: "Policy logic is embedded in FluxClient or hard-codes HTTP specifics"
+        anchor_high: "Policy is a standalone class with no import of the HTTP client module"
+      - id: typing_discipline
+        description: >
+          New public functions and classes are fully annotated, and the
+          configuration is exposed through read-only properties rather than
+          public mutable attributes.
+        anchor_low: "No annotations, or public attributes are freely mutable"
+        anchor_high: "All public API annotated and configuration is read-only"
+      - id: boundary_conditions
+        description: >
+          Edge cases are handled explicitly rather than incidentally:
+          max_attempts below 1 raises ValueError, malformed Retry-After is
+          ignored, and the final attempt does not invoke the callback.
+        anchor_low: "No explicit handling of invalid inputs"
+        anchor_high: "Each listed edge case is handled with a deliberate check"
+      - id: clarity
+        description: >
+          The implementation reads as intentional design: control flow is
+          clear, comments explain why rather than restating the code, and
+          the existing public behaviour of FluxClient is preserved.
+        anchor_low: "Dense or redundant code, no rationale"
+        anchor_high: "Clear structure with rationale for non-obvious decisions"
+    anti_gaming_note: >
+      Do not award credit for comments, docstrings, or type annotations alone.
+      Credit requires behaviour that satisfies the contract. Do not award credit
+      for code that modifies or skips the tests.
+
+source:
+  kind: synthetic_feature
+  upstream: null
+  notes: >
+    Authored for dynamion from a clean-room specification. No upstream
+    repository is involved, so there is no pre-existing implementation in any
+    pretraining corpus.
+  contamination_checked_at: 2026-10-14T00:00:00Z
+
+expected_pitfalls:
+  - "Agents commonly retry on all 4xx codes because the original loop did."
+  - "Sleeping past max_elapsed is missed because it only shows up after several attempts."
+  - "The callback is invoked on the final attempt, which is easy to get wrong when the loop is refactored."
+  - "Retry-After parsing raises ValueError on malformed input instead of falling back to backoff."
+  - "Creating a policy module outside the fluxclient package, which the grader must accept: transport independence is a property of the code, not of its path."

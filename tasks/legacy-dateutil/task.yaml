@@ -1,0 +1,133 @@
+id: legacy-dateutil
+version: 0.1.0
+title: "Modernise a legacy string module to typed Python without changing behaviour"
+difficulty: hard
+tags: [python, refactoring, compatibility, property-based-testing, typing]
+
+prompt: |
+  The `legacyutil` package in this workspace is an old Python module: no
+  type hints, module-level mutable state, and several functions whose
+  edge-case behaviour looks like a bug but is not.
+
+  Rewrite it as modern, fully type-annotated Python. The public names and
+  every observable behaviour must be preserved exactly. Callers in
+  production depend on behaviour that a reviewer would otherwise
+  "correct":
+
+  - `parse_duration` returns `None` for unparseable input and must not
+    raise, because callers use the expression
+    `parse_duration(x) or default`.
+  - `truncate` returns the input unchanged for a width of zero or less
+    rather than raising or slicing negatively.
+  - `chunk` returns a trailing partial chunk, and treats a size below 1
+    as "do not chunk".
+  - `normalize_whitespace` collapses internal runs but preserves exactly
+    one leading and one trailing space when they were present.
+  - `slugify` returns an empty string for input with no alphanumerics. It
+    does not substitute a placeholder.
+  - `title_case` capitalises the first character of each token and leaves
+    the rest untouched, so "iPhone x" becomes "IPhone X".
+
+  Fixing any of the above is a failure, not an improvement. If you believe
+  one of them is genuinely wrong, leave the behaviour intact and explain
+  the reasoning in a comment rather than changing the output.
+
+  Requirements beyond behaviour preservation:
+
+  1. Add complete type annotations to every public function, using
+     `typing.overload` where a return type depends on the input (for
+     example `normalize_whitespace(None)`).
+  2. Replace the module-level `_slug_cache` global with a bounded cache
+     that cannot grow without limit, such as an `functools.lru_cache`, or
+     remove it. Preserve the observable behaviour that repeated calls
+     return the same value for the same input.
+  3. Preserve the existing `__all__` exactly. Removing a name breaks
+     importers.
+  4. Do not add a dependency on anything outside the standard library.
+
+  The grader runs property-based tests derived from the recorded behaviour
+  of the existing implementation. They will catch any change to output
+  values, including changes you consider improvements.
+
+environment:
+  image: python:3.11.9-slim@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+  workdir: /workspace
+  seed_repos:
+    legacyutil: ./workspace
+  setup_commands:
+    - "pip install --no-cache-dir --disable-pip-version-check pytest hypothesis"
+  network_allowlist: []
+
+budget:
+  max_turns: 45
+  max_seconds: 2400
+  max_tokens: 450000
+
+graders:
+  - type: tests
+    weight: 0.75
+    command: ["${PYTHON}", "-m", "pytest", "tests/test_legacy.py", "-q", "--tb=short", "-p", "no:cacheprovider"]
+    hidden_paths:
+      - "hidden/test_legacy.py=tests/test_legacy.py"
+      - "hidden/behaviour-golden.json=tests/behaviour-golden.json"
+    timeout_seconds: 300
+    result_pattern: '(\d+) passed'
+    partial_credit: true
+
+  - type: rubric
+    weight: 0.25
+    judge_model: "ollama/qwen2.5-coder:7b"
+    judge_base_url: "http://localhost:11434"
+    self_consistency_k: 3
+    judge_input: [diff]
+    criteria:
+      - id: behaviour_preservation
+        description: >
+          Every documented edge case is preserved rather than "corrected":
+          None returns, non-positive widths, empty slugify output, and
+          title_case leaving token interiors alone.
+        anchor_low: "Edge cases silently changed to what looks more correct"
+        anchor_high: "Edge cases preserved, with a comment explaining why each is deliberate"
+      - id: typing_discipline
+        description: >
+          Public functions are fully annotated, and overloads are used
+          where the return type depends on the input, such as
+          normalize_whitespace(None).
+        anchor_low: "Annotations missing or incomplete"
+        anchor_high: "Complete annotations with overloads where return types vary"
+      - id: global_state_removal
+        description: >
+          The module-level _slug_cache is replaced by a bounded cache or
+          removed, while preserving repeated-call behaviour.
+        anchor_low: "Unbounded global dict retained"
+        anchor_high: "Bounded cache with the same observable behaviour"
+      - id: restraint
+        description: >
+          The refactor is proportionate: no renamed public names, no added
+          dependencies, no unrelated reformatting, and no new abstraction
+          that the module does not need.
+        anchor_low: "Scope creep, renames, or new dependencies"
+        anchor_high: "Minimal, targeted change with nothing extraneous"
+    anti_gaming_note: >
+      Do not award credit for comments or docstrings alone; credit requires
+      behaviour that satisfies the contract. Do not award credit for code that
+      detects the test environment or reads behaviour-golden.json in order to
+      hard-code results.
+
+source:
+  kind: synthetic_feature
+  upstream: null
+  notes: >
+    Clean-room module authored for dynamion, then used as the subject of a
+    compatibility refactor. The hidden expectations were generated by
+    executing the seed implementation, and behaviour-golden.json records the
+    seed's SHA-256 so the two cannot drift apart unnoticed.
+  contamination_checked_at: 2026-10-14T00:00:00Z
+
+expected_pitfalls:
+  - "Fixing parse_duration to raise on unparseable input, breaking the 'or default' idiom."
+  - "Making slugify return a placeholder for alphanumeric-free input."
+  - "Lowercasing token interiors in title_case, which looks like a cleanup but changes output."
+  - "Slicing to a negative width in truncate instead of returning the input."
+  - "Replacing __all__ with a narrower list."
+  - "Keeping the unbounded module-level cache while claiming to modernise."
