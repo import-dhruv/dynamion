@@ -155,6 +155,37 @@ whether the agent changes behaviour it was told to preserve. Four obvious
 slug, lowercasing token interiors, slicing to a negative width — take it
 from 47/47 to 35/47.
 
+## Difficulty calibration: currently failing
+
+Running the deliberately weaker model tier (`qwen2.5-coder:3b`) against
+`retry-backoff`, the two tiers **do not separate on score**:
+
+| Model | Hidden tests | Score | Edits | Files actually touched |
+|---|---|---|---|---|
+| baseline (no agent) | 4/17 | 0.17 | 0 | — |
+| `qwen2.5-coder:3b` | 5/17 | 0.21 | 0 | a new file with literal backticks in its name |
+| `qwen2.5-coder:7b` | 5/17 | 0.21 | 1 | a new file at the repo root |
+
+A 7B model and a 3B model score identically on a task labelled `medium`.
+Under the review bar in the handbook, that means the task is not currently
+demonstrating that it measures anything.
+
+The trajectories separate clearly — the 7B produced a plausible
+implementation, the 3B produced none — so the *capability* difference is
+visible and the *score* is not. Two likely causes, neither yet tested:
+
+1. **Partial credit floors too low.** Four tests pass on the untouched
+   seed, so any agent that does not regress the module starts near the
+   baseline. A task where doing nothing scores 17% cannot discriminate
+   between doing a little and doing a lot.
+2. **The file-targeting failure dominates.** Because agents are not
+   editing the intended file, the score is measuring "did you avoid
+   regressing the seed", not "did you solve the task".
+
+Both are fixable and both are task-design problems, not model problems.
+The honest summary: **three tasks, one model, and a calibration failure —
+this benchmark is not yet ready to rank agents.**
+
 ## The one finding three tasks agree on
 
 All three runs, same model, same configuration:
@@ -209,9 +240,10 @@ it claims to measure is the worst failure mode a benchmark has.
 
 ## Limitations
 
-- **Three tasks, one model tier.** No difficulty calibration, no
-  human baselines, no inter-task correlation study. `dynamion validate`
-  flags the missing human baselines.
+- **Three tasks, one model tier, calibration failing.** A 7B and a 3B
+  model score identically on the only task where both have been run. See
+  the calibration section above. No human baselines either;
+  `dynamion validate` flags them.
 - **Base images are digest-pinned**, and `dynamion validate` warns when
   they are not. A task may alternatively supply a Dockerfile, built from a
   digest-pinned base.
