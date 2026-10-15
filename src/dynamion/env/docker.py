@@ -89,6 +89,11 @@ class DockerEnvironment(Environment):
 
         if self._inspect(tag):
             self.image_id = tag
+            # Still resolve the digest on the cached path. A run record
+            # that says the digest is "unresolved" is exactly the record
+            # that cannot be reproduced later, and the cache is the common
+            # case -- every run after the first hits this branch.
+            self.image_digest = self._resolve_digest(tag)
             return tag
 
         if self.spec.dockerfile:
@@ -96,13 +101,28 @@ class DockerEnvironment(Environment):
         else:
             self._pull(self.image)
 
-        self.image_digest = (
-            self._repo_digest(tag if self.spec.dockerfile else self.image)
-            or self._image_id(tag)
-            or "unknown"
+        self.image_digest = self._resolve_digest(
+            tag if self.spec.dockerfile else self.image, fallback_tag=tag
         )
         self.image_id = tag
         return tag
+
+    def _resolve_digest(self, reference: str, fallback_tag: str | None = None) -> str:
+        """Best available content reference for ``reference``.
+
+        For a digest-pinned image this is the digest itself. For a locally
+        built or retagged image there is no repo digest, so the image id
+        is used -- still an exact content reference, and better than
+        reporting nothing.
+        """
+        digest = self._repo_digest(reference)
+        if digest:
+            return digest
+        if fallback_tag:
+            digest = self._repo_digest(fallback_tag)
+            if digest:
+                return digest
+        return self._image_id(reference or fallback_tag or "") or "unknown"
 
     def _build_from_dockerfile(self, tag: str) -> None:
         dockerfile = Path(self.spec.dockerfile or "")

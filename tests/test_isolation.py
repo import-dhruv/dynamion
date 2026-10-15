@@ -230,3 +230,22 @@ def test_grading_mount_is_read_only(workspace):
     assert "none" in argv[argv.index("--network") + 1], "grading must be offline"
     mounts = [a for a in argv if a.startswith(str(workspace))]
     assert mounts and mounts[0].endswith(":ro"), "workspace must mount read-only"
+
+def test_cached_image_still_reports_a_digest(tmp_path):
+    """A run record must never say the digest is unresolved.
+
+    Regression guard. ``build()`` returned early on the cached-image path
+    without resolving the digest, so every run after the first recorded
+    ``image_digest: unresolved`` -- precisely the record that cannot be
+    reproduced later. The cache is the common case, not the edge case.
+    """
+    spec = EnvironmentSpec(image="python:3.11.9-slim", workdir="/workspace")
+    env = build_environment(spec, mode="docker")
+    env.build()
+    first = env.describe()["image_digest"]
+    assert first != "unresolved"
+
+    # A second environment hitting the same cached tag must resolve it too.
+    again = build_environment(spec, mode="docker")
+    again.build()
+    assert again.describe()["image_digest"] == first
