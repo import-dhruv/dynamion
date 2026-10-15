@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - name: ruff check
+        run: ruff check src tests
+      - name: ruff format check
+        run: ruff format --check src tests
+      - name: mypy
+        run: mypy src
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -e ".[dev]"
+
+      - name: unit tests (no Docker required)
+        run: pytest -m "not docker" -v
+
+      - name: full suite (includes isolation, slower)
+        run: pytest -v
+
+      - name: validate task specs
+        run: dynamion validate --tasks-dir tasks
+
+  isolation:
+    # The isolation suite is the load-bearing claim of the benchmark: if
+    # grading can reach the network, or can write to the workspace, every
+    # published number becomes uninterpretable. It runs on its own job so a
+    # Docker failure is never mistaken for a harness failure.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+
+      - name: build the test environment image
+        run: |
+          docker pull python:3.11.9-slim
+          docker run -d --name dynamion-setup -w / python:3.11.9-slim sleep infinity
+          docker exec dynamion-setup /bin/sh -lc \
+            "pip install --no-cache-dir --disable-pip-version-check pytest hypothesis"
+          docker commit dynamion-setup dynamion-test-env
+          docker rm -f dynamion-setup
+
+      - name: isolation tests
+        run: pytest -m docker -v
+
+      - name: hermetic grading reproduces the local baseline
+        # A hermetic score that disagrees with the local score means the
+        # two modes measure different things. They must match.
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/dynamion-ws/ci"
+          cp -r tasks/retry-backoff/workspace "$HOME/dynamion-ws/ci/ws"
+          python - <<'PY'
+          import sys
+          from pathlib import Path
+          from dynamion.tasks import load_task
+          from dynamion.env import build_environment
+          from dynamion.core import Patch
+          from dynamion.graders.runner import build_grader
+
+          spec = Path("tasks/retry-backoff/task.yaml")
+          task = load_task(spec)
+          ws = Path.home() / "dynamion-ws" / "ci" / "ws"
+          results = {}
+          for mode in ("local", "docker"):
+              env = build_environment(
+                  task.environment, mode=mode, build_context=spec.parent
+              )
+              env.prepare(ws, task.environment.setup_commands)
+              grader = build_grader(task, source_root=spec.parent, environment=env)
+              results[mode] = grader.run(ws, Patch(unified_diff="")).score
+          print(f"local={results['local']:.4f} docker={results['docker']:.4f}")
+          assert results["local"] == results["docker"], (
+              f"hermetic grading disagrees with local: {results}"
+          )
+          PY
