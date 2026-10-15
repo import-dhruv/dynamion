@@ -1,0 +1,10 @@
+# Deliberately weaker model tier.
+#
+# Included because a benchmark that only runs one model cannot tell a hard
+# task from an easy one. Two clearly different tiers that score identically
+# on a task are evidence the task measures nothing.
+name: aider-local-small
+adapter: aider
+model: ollama/qwen2.5-coder:3b
+args:
+  repo_map: false

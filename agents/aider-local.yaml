@@ -1,0 +1,7 @@
+# Local, free, reproducible. The default agent for CI: no API key, no
+# network egress, and the same model digest for anyone who clones the repo.
+name: aider-local
+adapter: aider
+model: ollama/qwen2.5-coder:7b
+args:
+  repo_map: false
