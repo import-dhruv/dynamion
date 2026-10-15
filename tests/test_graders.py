@@ -367,4 +367,4 @@ def test_patch_includes_untracked_files(tmp_path):
 def _now():
     import datetime as dt
 
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)

@@ -199,16 +199,12 @@ class Runner(abc.ABC):
 
 def run_locally_quiet(command: list[str], cwd: Path) -> None:
     """Run a command, discarding failure. Used for index bookkeeping."""
-    try:
+    import contextlib
+
+    with contextlib.suppress(subprocess.TimeoutExpired, FileNotFoundError, OSError):
         subprocess.run(
-            command,
-            cwd=cwd,
-            capture_output=True,
-            timeout=60,
-            check=False,
+            command, cwd=cwd, capture_output=True, timeout=60, check=False
         )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        pass
 
 
 def _merge_env(overrides: dict[str, str]) -> dict[str, str]:
