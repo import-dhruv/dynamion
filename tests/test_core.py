@@ -25,7 +25,9 @@ from dynamion.tasks import load_tasks, schema_json
 
 REPO_TASKS = Path(__file__).resolve().parents[1] / "tasks"
 
-BUNDLED_TASK_IDS = {"retry-backoff", "idempotent-ledger", "legacy-dateutil"}
+BUNDLED_TASK_IDS = {
+    "retry-backoff", "idempotent-ledger", "legacy-dateutil", "inplace-refactor"
+}
 
 
 def minimal_task(**overrides) -> dict:
@@ -266,3 +268,15 @@ def test_bundled_tasks_map_hidden_tests_to_an_existing_source():
                 assert (root / source).exists(), (
                     f"{task.slug}: hidden path does not resolve: {source}"
                 )
+
+def test_bundled_tasks_record_a_baseline():
+    """A task without a recorded baseline reports no progress figure.
+
+    Without it, every agent gets a free floor and the score cannot
+    separate a weak model from a strong one.
+    """
+    for task in load_tasks(REPO_TASKS):
+        for grader in task.graders:
+            if grader.type == "tests":
+                assert grader.baseline is not None, f"{task.slug} has no baseline"
+                assert grader.baseline.passed <= grader.baseline.total

@@ -1,0 +1,136 @@
+id: inplace-refactor
+version: 0.1.0
+title: "Fix four arithmetic defects in a billing module, editing it in place"
+difficulty: medium
+tags: [python, money, decimal, refactoring, api-design]
+
+prompt: |
+  The file to modify is `pkbilling/__init__.py`. Edit that file in place.
+  Do not create a new module at the repository root and do not add a
+  helper package; the fix belongs next to the code it corrects.
+
+  `pkbilling` is a working invoice-pricing engine with four arithmetic
+  defects. Every function exists and handles the common case. `KNOWN_DEFECTS`
+  at the top of the module lists the four. Fix all four.
+
+  1. **`apply_discount` does not convert whole-number percentages to
+     fractions.** The contract is that a value above 1 is a percentage and
+     a value of 1 or below is a fraction. At the moment the distinction is
+     missing, so `apply_discount(80, 25)` scales by `1 - 25` and produces a
+     nonsensical negative total instead of treating 25 as 25%.
+
+  2. **`allocate` drops the rounding remainder.** The documented contract is
+     that the returned amounts sum *exactly* to the total: no cent is
+     created or destroyed. Currently each entry is rounded independently and
+     the remainder is discarded, so `allocate(Money(10), [1, 1, 1])` returns
+     amounts summing to 9.99. Distribute the remainder so the parts sum
+     exactly.
+
+  3. **`invoice_total` adds credit notes instead of subtracting them.**
+     `adjustments` are credit notes given as the positive amount to credit,
+     so a 10.00 credit on a 100.00 invoice must total 90.00.
+
+  4. **`parse_quantity` accepts negative quantities.** A negative quantity
+     must raise `BillingError`.
+
+  Requirements beyond fixing the four:
+
+  5. **Change nothing else.** Several behaviours are load-bearing and are
+     covered by the grader: `Money` is frozen and hashable, its `__add__`
+     and `__sub__` reject a currency mismatch, `rounded` uses
+     `ROUND_HALF_EVEN`, `to_json` emits a specific stable key order, and
+     `parse_quantity` still accepts `"3"`, `" 3 "` and `3`. Regressing any
+     of these fails the task.
+  6. Keep every public name in `__all__`. Callers import from the package.
+  7. Keep using `Decimal` for money. Do not introduce `float`.
+  8. Leave `KNOWN_DEFECTS` non-empty and keep it accurate. An agent that
+     empties the list has not documented the work.
+
+  The grader runs 43 tests. Sixteen of them fail against the current code
+  and represent the four defects. The rest pin behaviour you must not
+  break, so that "fixing" something which was working counts as a
+  regression rather than an improvement.
+
+environment:
+  image: python:3.11.9-slim@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+  workdir: /workspace
+  seed_repos:
+    pkbilling: ./workspace
+  setup_commands:
+    - "pip install --no-cache-dir --disable-pip-version-check pytest"
+  network_allowlist: []
+
+budget:
+  max_turns: 35
+  max_seconds: 1800
+  max_tokens: 350000
+
+graders:
+  - type: tests
+    weight: 0.75
+    command: ["${PYTHON}", "-m", "pytest", "tests/test_billing.py", "-q", "--tb=short", "-p", "no:cacheprovider"]
+    hidden_paths:
+      - "hidden/test_billing.py=tests/test_billing.py"
+    timeout_seconds: 300
+    result_pattern: '(\d+) passed'
+    partial_credit: true
+    baseline:
+      passed: 27
+      total: 43
+
+  - type: rubric
+    weight: 0.25
+    judge_model: "ollama/qwen2.5-coder:7b"
+    judge_base_url: "http://localhost:11434"
+    self_consistency_k: 3
+    judge_input: [diff]
+    criteria:
+      - id: minimality
+        description: >
+          Only the four defects are changed. No new modules, no renamed
+          public names, no restructured class hierarchy, no added
+          dependencies.
+        anchor_low: "Large unrelated refactor, new helper modules, or renames"
+        anchor_high: "Four localised fixes and nothing else"
+      - id: decimal_discipline
+        description: >
+          Money arithmetic stays in Decimal throughout; no float is
+          introduced anywhere in the pricing path.
+        anchor_low: "float used for money, even incidentally"
+        anchor_high: "Decimal everywhere, including the remainder distribution"
+      - id: remainder_distribution
+        description: >
+          allocate distributes the rounding remainder to the earliest
+          entries so the parts sum exactly to the total, and the approach
+          is explained.
+        anchor_low: "Rounding adjusted arbitrarily, or the remainder still dropped"
+        anchor_high: "Remainder distributed deterministically to earliest entries, with reasoning"
+      - id: documentation_honesty
+        description: >
+          KNOWN_DEFECTS is updated to describe what remains defective, and
+          docstrings that claimed a defect no longer present are corrected.
+        anchor_low: "KNOWN_DEFECTS emptied or left stale"
+        anchor_high: "Defect list and docstrings match the final state of the code"
+    anti_gaming_note: >
+      Credit behaviour, not commentary. Do not award credit for modifying,
+      skipping, or weakening assertions. Do not credit code that reads the
+      test file or detects the grading environment.
+
+source:
+  kind: synthetic_feature
+  upstream: null
+  notes: >
+    Clean-room module authored for dynamion. The four defects were
+    introduced deliberately and each was verified by executing the seed:
+    apply_discount(80, 25) returns a negative total, allocate(10, [1,1,1])
+    sums to 9.99, invoice_total with a 10.00 credit returns 110.00, and
+    parse_quantity accepts negatives.
+  contamination_checked_at: 2026-10-14T00:00:00Z
+
+expected_pitfalls:
+  - "Fixing apply_discount by subtracting the discount, which is algebraically identical and still mishandles percentages above 100."
+  - "Dropping the remainder in allocate a different way, such as adding it to the last entry, when the contract specifies earliest entries."
+  - "Fixing invoice_total by taking abs() of adjustments rather than subtracting them."
+  - "Relaxing parse_quantity to accept any int, losing the junk rejection."
+  - "Introducing float for the remainder distribution."
+  - "Creating a new module instead of editing pkbilling/__init__.py in place."

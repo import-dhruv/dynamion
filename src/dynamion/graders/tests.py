@@ -177,18 +177,33 @@ class TestGraderRunner(Grader):
         else:
             score = 1.0 if passed == total else 0.0
 
+        detail: dict = {
+            "passed": passed,
+            "total": total,
+            "returncode": returncode,
+            "stdout": _tail(stdout),
+        }
+
+        # Progress: the fraction of the distance between the untouched
+        # seed and a full solve that this attempt closed. Raw pass rate
+        # gives every agent a free floor when the buggy seed happens to
+        # satisfy part of the contract, which is what made a 3B and a 7B
+        # model score identically.
+        if self.spec.baseline is not None:
+            headroom = self.spec.baseline.headroom
+            if headroom <= 0:
+                detail["progress"] = 1.0 if passed >= total else 0.0
+            else:
+                detail["progress"] = max(0.0, min(1.0, (passed - self.spec.baseline.passed) / headroom))
+            detail["baseline_passed"] = self.spec.baseline.passed
+
         return GraderResult(
             grader_id=self.grader_id,
             type="tests",
             score=score,
             weight=self.spec.weight,
             passed=passed == total and total > 0,
-            detail={
-                "passed": passed,
-                "total": total,
-                "returncode": returncode,
-                "stdout": _tail(stdout),
-            },
+            detail=detail,
         )
 
 

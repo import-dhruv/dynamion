@@ -16,6 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from dynamion.core import Patch, TestGrader, Trajectory
 from dynamion.graders.tests import (
@@ -368,3 +369,80 @@ def _now():
     import datetime as dt
 
     return dt.datetime.now(dt.UTC)
+
+
+# ------------------------------------------------------------- progress
+
+
+def test_progress_measures_distance_closed_from_the_seed(tmp_path):
+    """Progress, not raw pass rate, is what separates model tiers.
+
+    A buggy seed often satisfies part of the contract by accident -- a
+    retry loop that retries *everything* happens to retry the transient
+    cases correctly -- so raw pass rate gives an agent that does nothing
+    a free floor, and a 3B model scored identically to a 7B one.
+    """
+    from dynamion.core import BaselineSpec
+
+    workdir = _grading_workspace(tmp_path)
+    spec = spec_for(tmp_path).model_copy(
+        update={"baseline": BaselineSpec(passed=2, total=4)}
+    )
+    runner = TestGraderRunner("hidden", spec)
+    result = runner.run(workdir, PATCH)
+
+    # 3 of 4 pass; the seed already had 2. One of the two remaining.
+    assert result.detail["progress"] == pytest.approx(0.5)
+    assert result.score == pytest.approx(0.75), "raw rate is unchanged"
+
+
+def test_progress_is_zero_when_no_better_than_the_seed(tmp_path):
+    from dynamion.core import BaselineSpec
+
+    workdir = make_workspace(tmp_path / "ws", "x = 1\n")
+    (workdir / "tests").mkdir()
+    (workdir / "tests" / "test_x.py").write_text("def test_x():\n    assert False\n")
+    spec = spec_for(tmp_path).model_copy(
+        update={"baseline": BaselineSpec(passed=0, total=1)}
+    )
+    result = TestGraderRunner("hidden", spec).run(workdir, PATCH)
+    assert result.detail["progress"] == 0.0
+
+
+def test_progress_is_clamped_when_an_agent_regresses_the_seed(tmp_path):
+    from dynamion.core import BaselineSpec
+
+    workdir = _grading_workspace(tmp_path)
+    # All four functions present but wrong, so the agent regresses the
+    # seed without breaking the import.
+    (workdir / "mod_under_test.py").write_text(
+        "def add(a, b):\n    return 0\n\n"
+        "def sub(a, b):\n    return 0\n\n"
+        "def mul(a, b):\n    return 0\n\n"
+        "def div(a, b):\n    return 0\n",
+        encoding="utf-8",
+    )
+    spec = spec_for(tmp_path).model_copy(
+        update={"baseline": BaselineSpec(passed=4, total=4)}
+    )
+    result = TestGraderRunner("hidden", spec).run(workdir, PATCH)
+    assert result.detail["progress"] == 0.0, "a regression must not go negative"
+
+
+def test_zero_headroom_baseline_is_binary(tmp_path):
+    """A task with no headroom is all-or-nothing, which is intentional."""
+    from dynamion.core import BaselineSpec
+
+    workdir = _grading_workspace(tmp_path)
+    spec = spec_for(tmp_path).model_copy(
+        update={"baseline": BaselineSpec(passed=4, total=4)}
+    )
+    result = TestGraderRunner("hidden", spec).run(workdir, PATCH)
+    assert result.detail["progress"] == 0.0
+
+
+def test_baseline_cannot_exceed_total():
+    from dynamion.core import BaselineSpec
+
+    with pytest.raises(ValidationError):
+        BaselineSpec(passed=5, total=4)

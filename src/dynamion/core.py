@@ -110,6 +110,36 @@ class Environment(StrictModel):
 # --------------------------------------------------------------------------
 
 
+class BaselineSpec(StrictModel):
+    """What the untouched seed scores.
+
+    Some fraction of a task's tests passes before the agent does anything,
+    usually because a buggy seed satisfies part of the contract by
+    accident -- a retry loop that retries *everything* happens to retry
+    the transient cases correctly. Reporting raw pass rate therefore gives
+    every agent, including one that does nothing, a free floor.
+
+    Recording the baseline lets the harness report *progress*: the
+    fraction of the remaining distance the agent closed. That is the
+    quantity that separates a weak model from a strong one.
+    """
+
+    passed: int = Field(ge=0)
+    total: int = Field(ge=1)
+
+    @model_validator(mode="after")
+    def _consistent(self) -> BaselineSpec:
+        if self.passed > self.total:
+            raise ValueError(
+                f"baseline passed ({self.passed}) cannot exceed total ({self.total})"
+            )
+        return self
+
+    @property
+    def headroom(self) -> int:
+        return self.total - self.passed
+
+
 class TestGrader(StrictModel):
     """Runs hidden tests and returns a fractional score in [0, 1].
 
@@ -134,6 +164,8 @@ class TestGrader(StrictModel):
     #: Regex used to count individual results, e.g. pytest's report line.
     result_pattern: str | None = r"(\d+) passed"
     partial_credit: bool = True
+    #: What the seed scores unaided. Enables the ``progress`` figure.
+    baseline: BaselineSpec | None = None
 
 
 class RubricCriterion(StrictModel):

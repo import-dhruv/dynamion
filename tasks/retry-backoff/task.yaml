@@ -78,6 +78,9 @@ graders:
     timeout_seconds: 300
     result_pattern: '(\d+) passed'
     partial_credit: true
+    baseline:
+      passed: 4
+      total: 17
 
   - type: rubric
     weight: 0.3

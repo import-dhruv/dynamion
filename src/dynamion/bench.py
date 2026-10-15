@@ -266,6 +266,11 @@ def summarise(scores: list[Score], verified: dict[str, bool] | None = None) -> l
                 "resolved": resolved,
                 "resolve_rate": resolved / len(group) if group else 0.0,
                 "mean_score": statistics.fmean(s.score for s in group),
+                # Progress against each task's untouched seed. This is the
+                # figure that separates models; raw pass rate does not,
+                # because a buggy seed often satisfies part of the
+                # contract by accident.
+                "mean_progress": _mean_progress(group),
                 "total_tokens": sum(s.tokens for s in group),
                 "total_wall_seconds": sum(s.wall_seconds for s in group),
                 "failure_modes": _count_modes(group),
@@ -275,6 +280,17 @@ def summarise(scores: list[Score], verified: dict[str, bool] | None = None) -> l
 
     leaderboard.sort(key=lambda r: (-r["resolve_rate"], -r["mean_score"]))
     return leaderboard
+
+
+def _mean_progress(scores: list[Score]) -> float | None:
+    """Mean baseline-relative progress, or None if no baseline is recorded."""
+    values: list[float] = []
+    for score in scores:
+        for grader in score.graders:
+            for component in grader.detail.get("components", [grader.detail]):
+                if "progress" in component:
+                    values.append(component["progress"])
+    return statistics.fmean(values) if values else None
 
 
 def _count_modes(scores: list[Score]) -> dict[str, int]:
