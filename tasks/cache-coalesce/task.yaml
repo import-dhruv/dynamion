@@ -1,0 +1,137 @@
+id: cache-coalesce
+version: 0.1.0
+title: "Fix four concurrency defects in an in-memory event bus"
+difficulty: hard
+tags: [python, concurrency, locking, api-design, memory-leak]
+
+prompt: |
+  The file to modify is `eventbus/__init__.py`. Edit that file in place;
+  do not create a new module at the repository root.
+
+  `EventBus` is a synchronous in-process publish/subscribe bus. It works
+  for the single-threaded case. It has four concurrency and state defects,
+  listed in `KNOWN_DEFECTS` at the top of the module. Fix all four.
+
+  1. **`subscribe` mutates the subscriber list without holding the lock.**
+     The read and the append must be one critical section, or two threads
+     subscribing at once can lose an update.
+
+  2. **`unsubscribe` does not check whether the handler was registered and
+     does not hold the lock.** It currently returns `True` whether or not
+     anything was removed, which makes a double-unsubscribe
+     indistinguishable from a successful one. It must return `True` only
+     when the handler was actually present and removed, and `False`
+     otherwise.
+
+  3. **`publish` uses `setdefault`, so publishing to a topic nobody
+     subscribed to creates an entry for it.** The bus then grows without
+     bound, and `topics()` reports topics that were never subscribed to.
+     Publishing to an unknown topic must deliver nothing and must not
+     register the topic.
+
+  4. **`stats()` reads the counters without synchronisation**, so a
+     concurrent `publish` can be observed as an inconsistent snapshot.
+
+  Requirements beyond the four fixes:
+
+  5. **Change nothing else.** These behaviours are load-bearing and are
+     covered by the grader: handler exceptions are collected rather than
+     raised, and one failing subscriber must not prevent the others from
+     running; `publish` returns the number of handlers that ran; the
+     unsubscriber returned by `subscribe` is safe to call more than once;
+     `CacheStats` is frozen and compares by value; `handler_list` returns
+     a copy; empty topics and non-callable handlers raise
+     `EventBusError`. Regressing any of these fails the task.
+  6. Keep every public name in `__all__`.
+  7. Leave `KNOWN_DEFECTS` non-empty and accurate.
+  8. Do not add a dependency, and do not introduce a queue or background
+     thread: `publish` must remain synchronous.
+
+  Note on the grader: the concurrency defects are checked **structurally**,
+  by inspecting whether the critical section exists, not only by trying to
+  win a race. A behavioural race test would pass an unsynchronised
+  implementation most of the time, because the race window is microseconds
+  wide.
+
+environment:
+  image: python:3.11.9-slim@sha256:8fb099199b9f2d70342674bd9dbccd3ed03a258f26bbd1d556822c6dfc60c317
+  workdir: /workspace
+  seed_repos:
+    eventbus: ./workspace
+  setup_commands:
+    - "pip install --no-cache-dir --disable-pip-version-check pytest"
+  network_allowlist: []
+
+budget:
+  max_turns: 40
+  max_seconds: 2100
+  max_tokens: 400000
+
+graders:
+  - type: tests
+    weight: 0.75
+    command: ["${PYTHON}", "-m", "pytest", "tests/test_bus.py", "-q", "--tb=short", "-p", "no:cacheprovider"]
+    hidden_paths:
+      - "hidden/test_bus.py=tests/test_bus.py"
+    timeout_seconds: 300
+    result_pattern: '(\d+) passed'
+    partial_credit: true
+    baseline:
+      passed: 16
+      total: 22
+
+  - type: rubric
+    weight: 0.25
+    judge_model: "ollama/qwen2.5-coder:7b"
+    judge_base_url: "http://localhost:11434"
+    self_consistency_k: 3
+    judge_input: [diff]
+    criteria:
+      - id: critical_sections
+        description: >
+          Each critical section covers the whole read-modify-write, not
+          just the mutation, and the lock chosen is appropriate to the
+          nesting.
+        anchor_low: "Lock acquired after the check, or missing entirely"
+        anchor_high: "Lock spans the full read-modify-write in every affected method"
+      - id: no_deadlock
+        description: >
+          The locking change cannot deadlock: lock ordering is consistent
+          and no lock is held while calling out to user code.
+        anchor_low: "User handlers invoked while the lock is held"
+        anchor_high: "Lock released before handlers run; ordering reasoning is stated"
+      - id: minimality
+        description: >
+          Four localised fixes. No queue, no background thread, no new
+          dependency, no rewritten architecture.
+        anchor_low: "Asynchronous rewrite or new subsystem introduced"
+        anchor_high: "Four minimal changes, publish still synchronous"
+      - id: documentation_honesty
+        description: >
+          KNOWN_DEFECTS is updated to describe what remains defective, and
+          comments that documented a fixed defect are corrected.
+        anchor_low: "KNOWN_DEFECTS emptied or left stale"
+        anchor_high: "Defect list and comments match the final state"
+    anti_gaming_note: >
+      Credit behaviour and structure, not commentary. Do not award credit
+      for code that deletes or weakens assertions, and do not credit
+      removing the threading import to make a structural check pass.
+
+source:
+  kind: synthetic_feature
+  upstream: null
+  notes: >
+    Clean-room module authored for dynamion. Each defect was verified by
+    executing the seed: the seed scores 16/22, and applying the four
+    documented fixes scores 22/22. The structural checks parse the AST
+    rather than matching source text, so a comment mentioning a method
+    name cannot satisfy or fail them.
+  contamination_checked_at: 2026-10-14T00:00:00Z
+
+expected_pitfalls:
+  - "Adding the lock only around the append and leaving the membership read outside it."
+  - "Making unsubscribe return True unconditionally to keep the existing contract."
+  - "Replacing setdefault with a defaultdict, which still grows without bound."
+  - "Deleting the threading import to avoid a structural check, breaking synchronisation entirely."
+  - "Asynchronous rewrite with a background thread, which would violate the synchronous contract."
+  - "Fixing unsubscribe but leaving the double-unsubscriber returned by subscribe unsafe."

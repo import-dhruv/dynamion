@@ -26,7 +26,11 @@ from dynamion.tasks import load_tasks, schema_json
 REPO_TASKS = Path(__file__).resolve().parents[1] / "tasks"
 
 BUNDLED_TASK_IDS = {
-    "retry-backoff", "idempotent-ledger", "legacy-dateutil", "inplace-refactor"
+    "retry-backoff",
+    "idempotent-ledger",
+    "legacy-dateutil",
+    "inplace-refactor",
+    "cache-coalesce",
 }
 
 

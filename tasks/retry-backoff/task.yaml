@@ -6,6 +6,11 @@ difficulty: medium
 tags: [python, concurrency, error-handling, api-design, typing]
 
 prompt: |
+  The file to modify is `fluxclient/client.py`. Work in that file; do not
+  create a new module at the repository root. The retry policy may be
+  split into a new module under `fluxclient/` if that is genuinely
+  clearer, but `fluxclient/client.py` itself must end up using it.
+
   The `fluxclient` package in this workspace sends HTTP requests and retries
   them on transient failures. Retries are currently handled by a single
   hard-coded loop inside `FluxClient.request`, which retries every error
