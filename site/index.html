@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dynamion leaderboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --fg: #c9d1d9; --muted: #8b949e;
+    --border: #30363d; --accent: #58a6ff; --warn: #d29922; --ok: #3fb950;
+  }
+  body {
+    background: var(--bg); color: var(--fg); margin: 0;
+    font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 60rem; margin: 0 auto; padding: 2.5rem 1.5rem; }
+  h1 { font-size: 1.6rem; margin: 0 0 .25rem; letter-spacing: -.02em; }
+  h2 { font-size: 1.05rem; margin: 2.5rem 0 .75rem; color: var(--accent); }
+  .sub { color: var(--muted); margin: 0 0 2rem; }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 1rem; }
+  th, td { text-align: left; padding: .6rem .75rem; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: .8rem; text-transform: uppercase;
+        letter-spacing: .04em; }
+  td.num { font-variant-numeric: tabular-nums; }
+  .pill { display: inline-block; padding: .1rem .5rem; border-radius: 999px;
+           font-size: .72rem; border: 1px solid var(--border); color: var(--muted); }
+  .pill.ok { color: var(--ok); border-color: #238636; }
+  .pill.warn { color: var(--warn); border-color: #9e6a03; }
+  .bar { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden;
+          min-width: 80px; }
+  .bar > span { display: block; height: 100%; background: var(--accent); }
+  .caveat { background: #161b22; border: 1px solid var(--border); border-left: 3px solid var(--warn);
+             border-radius: 6px; padding: 1rem 1.25rem; margin: 1rem 0; }
+  .caveat ul { margin: .5rem 0 0; padding-left: 1.2rem; color: var(--muted); }
+  .caveat li { margin: .3rem 0; }
+  footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border);
+            color: var(--muted); font-size: .85rem; }
+  code { background: #161b22; padding: .1rem .35rem; border-radius: 4px; font-size: .9em; }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body><div class="wrap">
+<h1>dynamion</h1>
+<p class="sub">Long-horizon software-engineering evaluation for coding agents.</p>
+<h2>Leaderboard</h2>
+<p class="empty">No results yet. Run <code>dynamion bench</code> to populate the leaderboard.</p>
+<h2>Failure modes</h2>
+<p class="empty">No failure data yet.</p>
+<div class="caveat"><strong>Read these before quoting a number.</strong><ul><li>Every score here is from a <em>single</em> agent tier on a small task set. It establishes that the pipeline works, not anything about model capability.</li><li>Rows marked <em>unverified</em> were not executed against the real CLI. The adapter ships so the harness is extensible; the number is not a measurement.</li><li>Grading is hermetic, but some past failures were the grader's fault rather than the agent's. Each such bug is documented in the repository README with a regression test pinning it.</li><li>Rubric subscores are excluded because the available judge model is too small to rank agents with.</li></ul></div>
+<footer>
+Generated from <code>results/leaderboard.json</code> by
+<code>python -m dynamion.site</code>. Reproduce with
+<code>dynamion bench --tasks-dir tasks</code>.
+</footer>
+</div></body>
+</html>

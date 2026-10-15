@@ -257,11 +257,15 @@ it claims to measure is the worst failure mode a benchmark has.
 - **Synthetic tasks are clean but artificial.** Real repositories are
   messier. See [CONTAMINATION.md](CONTAMINATION.md) for what this costs.
 
-## Contributing
+## Documentation
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the task-authoring review bar:
-realism check, solvability proof, anti-gaming review, and difficulty
-calibration.
+| Document | What it is for |
+|---|---|
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Task-authoring review bar and harness contribution |
+| [docs/task-design-handbook.md](docs/task-design-handbook.md) | The specification for creating tasks; reads as a design document, not a checklist |
+| [docs/datasheet.md](docs/datasheet.md) | Composition, intended use, and limitations, in datasheet form |
+| [docs/grader-design-notes.md](docs/grader-design-notes.md) | What each grader measures and which attacks were attempted against it |
+| [CONTAMINATION.md](CONTAMINATION.md) | Provenance per task, and what the claim does not cover |
 
 ## License
 
