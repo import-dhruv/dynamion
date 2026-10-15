@@ -85,4 +85,4 @@ def build_runner(spec: str | AgentConfig, *, model: str | None = None) -> Runner
     return get_adapter(config.adapter)(model=config.model, **config.args)
 
 
-__all__ = ["AgentConfig", "load_agent_configs", "build_runner"]
+__all__ = ["AgentConfig", "build_runner", "load_agent_configs"]

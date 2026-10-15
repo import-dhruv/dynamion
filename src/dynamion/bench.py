@@ -146,7 +146,7 @@ def run_benchmark(
     verified_map: dict[str, bool] = {}
     results_dir = Path(results_dir)
     results_dir.mkdir(parents=True, exist_ok=True)
-    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = dt.datetime.now(dt.UTC).strftime("%Y%m%dT%H%M%SZ")
     scores: list[Score] = []
 
     for config in configs:
@@ -278,4 +278,4 @@ def _count_modes(scores: list[Score]) -> dict[str, int]:
     return counts
 
 
-__all__ = ["run_benchmark", "summarise", "classify_failure"]
+__all__ = ["classify_failure", "run_benchmark", "summarise"]

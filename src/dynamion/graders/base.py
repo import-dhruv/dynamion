@@ -23,7 +23,9 @@ class Grader(abc.ABC):
     def run(self, workdir: Path, patch: Patch) -> GraderResult:
         """Score the state of ``workdir`` and return a normalised result."""
 
-    def inject_hidden_tests(self, workdir: Path) -> None:
+    # Not abstract: injecting hidden tests is optional, and forcing every
+    # grader to implement a no-op would obscure the ones that must.
+    def inject_hidden_tests(self, workdir: Path) -> None:  # noqa: B027
         """Hook called after the agent finishes, before grading.
 
         No-op by default. Test graders override this to withhold test
@@ -91,4 +93,4 @@ class AggregateGrader(Grader):
         return self.name
 
 
-__all__ = ["Grader", "AggregateGrader"]
+__all__ = ["AggregateGrader", "Grader"]

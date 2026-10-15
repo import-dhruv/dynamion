@@ -22,9 +22,9 @@ def build_environment(spec, *, mode: str = "local", **kwargs) -> Environment:
 
 __all__ = [
     "CommandResult",
+    "DockerEnvironment",
     "Environment",
     "EnvironmentError_",
-    "DockerEnvironment",
     "LocalEnvironment",
     "build_environment",
     "run_locally",

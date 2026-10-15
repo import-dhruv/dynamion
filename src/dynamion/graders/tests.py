@@ -274,4 +274,4 @@ def _tail(text: str | None, limit: int = 4000) -> str:
     return text[-limit:]
 
 
-__all__ = ["TestGraderRunner", "GraderEnvironmentError"]
+__all__ = ["GraderEnvironmentError", "TestGraderRunner"]

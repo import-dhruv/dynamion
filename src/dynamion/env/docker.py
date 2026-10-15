@@ -323,4 +323,4 @@ class DockerEnvironment(Environment):
         return None
 
 
-__all__ = ["DockerEnvironment", "DEFAULT_IMAGE", "HOST_ALIAS"]
+__all__ = ["DEFAULT_IMAGE", "HOST_ALIAS", "DockerEnvironment"]

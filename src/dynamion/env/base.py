@@ -127,4 +127,4 @@ def _text(value: str | bytes | None) -> str:
     return value
 
 
-__all__ = ["Environment", "EnvironmentError_", "CommandResult", "run_locally"]
+__all__ = ["CommandResult", "Environment", "EnvironmentError_", "run_locally"]

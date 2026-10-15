@@ -95,7 +95,7 @@ class Runner(abc.ABC):
         subprocess supervision, so implementing it once here avoids five
         near-identical copies with five different timeout bugs.
         """
-        started = dt.datetime.now(dt.timezone.utc)
+        started = dt.datetime.now(dt.UTC)
         command = self.build_command(task_prompt, workdir, budget)
 
         env_overrides = self.environment_overrides(workdir)
@@ -123,7 +123,7 @@ class Runner(abc.ABC):
                     turn=traj.n_edits,
                     kind="error",
                     content=stderr[-4000:],
-                    timestamp=dt.datetime.now(dt.timezone.utc),
+                    timestamp=dt.datetime.now(dt.UTC),
                 )
             )
 
@@ -132,7 +132,7 @@ class Runner(abc.ABC):
         elif traj.exit_reason is None:
             traj.exit_reason = "completed" if code == 0 else "error"
 
-        traj.ended_at = dt.datetime.now(dt.timezone.utc)
+        traj.ended_at = dt.datetime.now(dt.UTC)
 
         self._check_invocation(command, code, stderr, traj.duration_seconds or 0.0)
         return traj
@@ -202,4 +202,4 @@ def _as_text(value: str | bytes | None) -> str:
     return value
 
 
-__all__ = ["Runner", "RunnerError", "BudgetExhausted", "TokenUsage"]
+__all__ = ["BudgetExhausted", "Runner", "RunnerError", "TokenUsage"]

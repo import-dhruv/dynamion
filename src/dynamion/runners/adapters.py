@@ -44,4 +44,4 @@ def available_adapters() -> list[str]:
     return sorted(_REGISTRY)
 
 
-__all__ = ["get_adapter", "register_adapter", "available_adapters"]
+__all__ = ["available_adapters", "get_adapter", "register_adapter"]

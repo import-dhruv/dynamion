@@ -186,4 +186,4 @@ class RubricGraderRunner(Grader):
         )
 
 
-__all__ = ["RubricGraderRunner", "JudgeUnavailable", "check_judge_independence"]
+__all__ = ["JudgeUnavailable", "RubricGraderRunner", "check_judge_independence"]

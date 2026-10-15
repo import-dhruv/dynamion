@@ -82,4 +82,4 @@ def schema_json() -> str:
     return json.dumps(TaskSpec.model_json_schema(), indent=2)
 
 
-__all__ = ["load_task", "load_tasks", "schema_json", "is_spec_path", "VALID_SUFFIXES"]
+__all__ = ["VALID_SUFFIXES", "is_spec_path", "load_task", "load_tasks", "schema_json"]
